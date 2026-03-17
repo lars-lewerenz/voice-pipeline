@@ -1,0 +1,13 @@
+[project]
+name = "voice-pipeline"
+version = "0.1.0"
+description = "A voice to data pipeline"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.1",
+    "numpy>=2.4.3",
+    "sounddevice>=0.5.5",
+    "uvicorn>=0.42.0",
+    "websockets>=16.0",
+]
