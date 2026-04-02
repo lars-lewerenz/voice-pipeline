@@ -8,10 +8,22 @@ from websockets.asyncio.client import ClientConnection, connect
 
 from voice_pipeline.config import settings
 
-tx_queue: asyncio.Queue[bytes] = asyncio.Queue()  # Microphone -> Network
+tx_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=settings.tx_queue_maxsize) # Micr
 rx_queue: queue.Queue[bytes] = queue.Queue()  # Network -> Speaker
 
 loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _enqueue_tx_frame(data: bytes) -> None:
+    if tx_queue.full():
+        try:
+            tx_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+    try:
+        tx_queue.put_nowait(data)
+    except asyncio.QueueFull:
+        pass
 
 
 def audio_callback(
@@ -25,7 +37,7 @@ def audio_callback(
         print(f"Audio Warning: {status}", file=sys.stderr)
 
     if loop is not None:
-        loop.call_soon_threadsafe(tx_queue.put_nowait, bytes(indata))
+        loop.call_soon_threadsafe(_enqueue_tx_frame, bytes(indata))
 
     try:
         data: bytes = rx_queue.get_nowait()
@@ -55,11 +67,16 @@ async def _run() -> None:
         blocksize=settings.blocksize,
         channels=settings.channels,
         dtype=settings.dtype,
+        latency=settings.portaudio_latency,
         callback=audio_callback,
     )
 
     with stream:
-        async with connect(settings.ws_url) as ws:
+        async with connect(
+            settings.ws_url,
+            compression="deflate" if settings.ws_compression else None,
+            max_queue=settings.ws_max_queue,
+        ) as ws:
             print("Connected. Speak into the microphone...")
 
             async with asyncio.TaskGroup() as tg:
